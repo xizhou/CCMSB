@@ -1,13 +1,12 @@
 CCMSB
 ==========
 CCMSB is an algorithm on Integrating GEO transcriptome big data，single-cell transcriptome data, methylome data and gene-variation data in random-combining to select differentiated genes in R in the terms specified by users. The method is based on randomly selecting fold change or p value
-judged by co-occurrence text mining and known markers on each dataset on all omics in filtering differentiated genes in R. 
+judged by the AI-derived or manually derived prior knowledge on each dataset on all omics in filtering differentiated genes in R. 
 The differentiated genes identified by Dusim are in high probability of important biological meaning. 
 
 
 
-CCMSB是Ｒ平台下的基于不同来源的转录组大数据, 转录组单细胞大数据，甲基化数据和基因突变数据等的多组学整合和提供用户指定的生物学概念相关差异基因的工具，适用于ncbi geo等多组学大数据的整合及其用户指定领域的差异基因筛选工作，
-筛选到的基因可直接用于实验验证准确率较高。
+CCMSB是Ｒ平台下的基于不同来源的转录组大数据, 转录组单细胞大数据，甲基化数据和基因突变数据等的多组学整合和提供用户指定的生物学概念相关差异基因的工具，适用于ncbi geo等多组学大数据的整合及其用户指定领域的差异基因筛选工作，筛选到的基因可直接用于实验验证准确率较高。
 
 ## Authors
 
@@ -83,37 +82,11 @@ go <- as.data.table(org.Hs.egGO)
 geneinfo <- as.data.table(org.Hs.egSYMBOL)
 go <- merge(go,geneinfo,all.x=TRUE)
 gene_go <- go[go_id%in%target_GO,unique(symbol)]
-```
-寻找研究对象的markers
-```r
-topic <- "and prostate cancer"
-library(data.table)
-x <- fread("combine.csv")
-gene <- x[,gene]
-x[,gene:=NULL]
-y <- list()
-for(i in seq(gene))
-{
-   tmp <- getCount(gene[i])
-   if(tmp>0)
-   {
-      xi <- paste(gene[i],topic)
-      y[[i]] <- getCount(xi)
-   }
-   else
-   {
-      y[[i]] <- 0
-   } 
-   cat("iteration = ",i,"\n")
-}
-y <- unlist(y)
-res <- data.table(gene=gene,hits=y)
-fwrite(res,"hit.csv")
-```
 
 
 数据二次整合
 ```r
+##"hit.csv" is the co-occurrence file from AI-derived or manually-derived file on downloaded abstracts 
 library(data.table)
 x <- fread("combine.csv")
 gene <- x[,gene]
