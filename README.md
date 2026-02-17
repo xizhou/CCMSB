@@ -14,13 +14,13 @@ CCMSB是Ｒ平台下的基于不同来源的转录组大数据, 转录组单细�
 
 [周晓北] (Zhou Xiaobei)
 
-## <a name="install"></a> Prerequisites and installation
-
-
-
-### A step-by-step pipeline to reproduce the model on new datasets, including toy data, annotated code, and parameter configurations, can be found at: "code_ITRDR_tumor_LIHC.txt".
-### he simulated framework used in this study is available at: "simulation.R".
 
 ### <a name="prerequisites"></a> Prerequisites
 - **R (>=4.3.3)** 
+
+### Usage 
+A step-by-step pipeline to reproduce the model on new datasets, including toy data, annotated code, and parameter configurations, can be found at: "code_ITRDR_tumor_LIHC.txt".
+
+The simulated framework used in this study is available at: "simulation.R".
+
 
