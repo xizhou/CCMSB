@@ -1,0 +1,1140 @@
+#Read in GEO datasets and combine
+##Please run in R v4.1.3 - R v4.3.2 with packages in suggested version
+##Taking liver cancer integration for example
+##For other datasets, apply the case in similar way
+##Please put all expression files in the dir folder
+##Bulk expression files are listed in the dir folder
+##Folder structure should be: dir--bulk RNA-seq, one for one folder // sc_data -- single cell RNA-seq, one for one folder
+
+library(data.table)
+library(stringr)
+dir <- "D:/ITRDR_v20/LIHC"
+setwd(dir)
+
+
+##For bulk RNA-seq files preprocession
+##Please perform these processes for each bulk RNA-seq expression matrix
+  ##file list generation
+library("stringr")
+FILE<-"GSE84005_processed.csv"
+susu3<-read.csv("GSE84005.csv")
+  ##require GPL information
+GPL_data<-read.csv("E:/R_package/GPL_data/GPL5175.csv")
+gene2<-as.character(GPL_data[,1])
+gene1<-as.character(GPL_data$gene_assignment)
+susu5<-as.character(susu3[,1])
+len4<-length(susu5)
+susu6<-rep(0,len4)
+for (i in 1:len4) {
+    k<-which(susu5[i]==gene2)
+    if (length(k)==0)  susu6[i]<-""
+    if (length(k)==1)  susu6[i]<-strsplit(gene1[k],split=" // ")[[1]][2]
+    if (length(k)>1) susu6[i]<-strsplit(gene1[k[1]],split=" // ")[[1]][2]
+    }
+susu3[,1]<-susu6
+#len3<-dim(susu3)[1]
+#susu3<-susu3[-len3,]
+gene3<-as.character(susu3[,1])
+susu30<-susu3[!is.na(gene3),]
+write.csv(susu30,"temp.csv",row.names=FALSE)
+  ##perform derepeat
+anna4<-read.csv("temp.csv")
+len<-dim(anna4)[1]
+num<-dim(anna4)[2]
+mark<-0
+count<-1
+pre<-2  #The number for column with the first appearance of values
+for (i in 1:len) mark[i]<-0
+for (i in 1:len) count[i]<-1
+for (i in 1:(len-1)) {
+   if (mark[i]==1) next
+   j<-which(anna4[i,1]==anna4[,1])
+   if (length(j)==1) next
+   lenj<-length(j)    
+   for (jj in 2:lenj) {
+            mark[j[jj]]<-1
+            count[i]<-count[i]+1
+            for (k in pre:num)   anna4[i,k]<-as.numeric(anna4[i,k])+as.numeric(anna4[j[jj],k])            	
+        }
+   }
+    for (k in pre:num)  anna4[,k]<-as.numeric(anna4[,k])/count
+write.csv(anna4,"anna4.csv",row.names=FALSE)
+anna<-read.csv("anna4.csv")
+anna$mark<-mark
+anna2<-anna[which(mark==0),]
+anna2$mark<-NULL
+   ##next normalization 
+susu<-anna2
+lens<-dim(susu)[1]
+nums<-dim(susu)[2]
+sum_col<-rep(0,nums-1)
+for (j in 2:nums) {
+      sum_col[j-1]<-sum(as.numeric(susu[,j]))
+   }
+standard<-min(sum_col)
+susu2<-susu
+for (j in 2:nums) {
+       susu2[,j]<-as.numeric(susu[,j])*standard/sum_col[j-1]
+       }
+
+sum_stan<-rep(0,nums-1)
+for (j in 2:nums) {
+      sum_stan[j-1]<-sqrt(var(as.numeric(susu2[,j])))
+   }
+standard<-min(sum_stan)
+meana<-mean(as.numeric(susu2[,2]))
+susu3<-susu2
+ for (j in 2:nums) {
+       susu3[,j]<-meana+(as.numeric(susu2[,j])-meana)*standard/sum_stan[j-1]
+       }
+write.csv(susu3,FILE,row.names=FALSE)
+  ##calculate fold chagne
+len3<-dim(susu3)[1]
+num3<-dim(susu3)[2]
+col3<-colnames(susu3)
+col30<-gsub("non.tumor","non",col3)
+fold_R273_R175<-rep(0,len3)
+for (i in 1:len3) {
+   R273<-mean(as.numeric(susu3[i,which(str_detect(col30,"tumor"))]))+0.0000001
+   R175<-mean(as.numeric(susu3[i,which(str_detect(col30,"non"))]))+0.0000001
+   fold_R273_R175[i]<-R273/R175
+   }
+susu4<-as.data.frame(susu3)
+susu4$fold_T_NM<-fold_R273_R175
+#susu40<-susu4[which(fold_R273_R175>1),]  ##If wanting to generate up-regulated genes
+write.csv(susu4,FILE,row.names=FALSE)  ##use excel to select genes with fold<0.5
+  #calculate p value
+susu5<-read.csv(FILE)
+len5<-dim(susu5)[1]
+num5<-dim(susu5)[2]
+p_R273_R175<-rep(0,len5)
+for (i in 1:len5) {
+   R273<-as.numeric(susu3[i,which(str_detect(col30,"tumor"))])
+   R175<-as.numeric(susu3[i,which(str_detect(col30,"non"))])
+   p_R273_R175[i]<-t.test(R273,R175)$p.value
+   }
+susu6<-as.data.frame(susu5)
+susu6$p_T_NM<-p_R273_R175
+write.csv(susu6,FILE,row.names=FALSE)
+
+
+
+
+
+
+##For single-cell sequencing files preprocession
+##Please apply these codes on each sub-folder containing one single-cell sequencing dataset
+##All files after procession are _processed.csv
+setwd("D:/Hepa_tumor/sc_data/GSE149614_HCC.scRNAseq.S71915.count.txt") 
+library(data.table)
+   ##Adjust filenames to barcodes.tsv, genes.tsv and matrix.mtx if filenames are not these
+   ##Unzip in windows or mac//terminal if filenames are barcodes.tsv.gz, genes.tsv.gz and matrix.matrix.gz
+data<-read.csv("barcodes.csv")
+data<-fwrite(data,"barcodes.tsv",row.names=FALSE)
+data<-read.csv("genes.csv")
+data<-fwrite(data,"genes.tsv",row.names=FALSE)
+try<-fread("matrix.mtx")
+try2<-try[,1:3]
+fwrite(try2,"matrix.mtx",row.names=FALSE)
+pbmc.counts <- Read10X(data.dir = "./",gene.column = 1,cell.column=1)
+    ##Start processing single-cell sequencing datasets
+    ##Converting all single-cell datasets into bulk-like gene-cluster expression matrix one by one
+    ##Please input manually for this part
+library(stringr)
+file00<-list.files()
+aa_list<-file00[which(str_detect(file00,".barcode.csv"))]
+bb_list<-file00[which(str_detect(file00,".genes.csv"))]
+cc_list<-file00[which(str_detect(file00,".counts.mtx"))]
+lena<-length(aa_list)
+aa_files<-rep(0,lena)
+bb_files<-rep(0,lena)
+cc_files<-rep(0,lena)
+for (i in 1:lena){
+    aa_files[i]<-strsplit(aa_list[i],split="_")[[1]][1]
+    bb_files[i]<-strsplit(bb_list[i],split="_")[[1]][1]
+    cc_files[i]<-strsplit(cc_list[i],split="_")[[1]][1]
+    }
+for (i in 1:lena){
+  aa<-read.csv(aa_list[i])
+  bbk<-which(bb_files==aa_files[i])
+  bb<-read.csv(bb_list[bbk])
+  cck<-which(cc_files==aa_files[i])
+  cc<-fread(cc_list[cck])
+  cc<-cc[,1:3]
+  cc2<-cc[-1,]
+  lena<-dim(aa)[1]
+  lenb<-dim(bb)[1]
+  lenc<-dim(cc2)[1]
+  explist<-matrix(0,lenb,lena)
+  colnames(explist)<-aa[,1]
+  rownames(explist)<-bb[,1]
+  for (j in 1:lenc){
+     k1<-as.integer(cc2[j,1])
+     k2<-as.integer(cc2[j,2])
+     explist[k1,k2]<-as.numeric(cc2[j,3])
+      }
+   #pbmc<-CreateSeuratObject(counts = pbmc.counts, project = 's1', min.cells = 3, min.features = 200)
+  pbmc<-CreateSeuratObject(counts = explist, project = 's1', min.cells = 3, min.features = 200)
+  pbmc <- NormalizeData(object = pbmc)
+  pbmc <- FindVariableFeatures(object = pbmc)
+  pbmc <- ScaleData(object = pbmc)
+  pbmc <- RunPCA(object = pbmc)
+  pbmc <- FindNeighbors(object = pbmc)
+  pbmc <- FindClusters(object = pbmc)
+   check<-pbmc@meta.data$seurat_clusters
+   pbcc<-colnames(pbmc)
+   ucheck<-unique(check)
+   lenu<-length(ucheck)
+   lenp<-dim(pbmc)[1]
+   counts<-matrix(0,lenp,lenu)
+   for (j in 1:lenu){
+     ii<-which(ucheck[j]==check)
+     counts2<-pbmc[,ii]
+     counts[,j]<-rowSums(counts2)
+           }
+  rownames(counts)<-rownames(pbmc)
+  labeln<-1:lenu
+  LABEL<-aa_files[i]
+  labeln2<-paste(LABEL,labeln,sep="_")
+  colnames(counts)<-labeln2
+  FILE_OUT<-paste(aa_files[i],"_cluster_counts.csv",sep="")
+  write.csv(counts,FILE_OUT)
+    }
+     ##Merge all files
+file00<-list.files()
+ttfile<-file00[which(str_detect(file00,"_cluster_counts.csv"))]
+lent<-length(ttfile)
+data00<-read.csv(ttfile[1])
+colnames(data00)[1]<-"Gene"
+for (i in 2:lent){
+   data01<-read.csv(ttfile[i])
+   colnames(data01)[1]<-"Gene"
+   data00<-merge(data00,data01,by="Gene",all=TRUE)
+   }
+data00[is.na(data00)]<-0
+write.csv(data00,"GSE181294_processed.csv",row.names=FALSE) ##Change filename according to the name of the dataset
+
+
+
+
+##Selective if wanting to filter highly expressive genes
+##Checking genes with high fold change for T vs N
+FILE000<-"target_combine_LIHC.csv"
+a<-list.files() 
+aa<-a[!is.na(str_extract(a,"done"))]
+lena<-length(aa)
+bb<-rep("",lena)
+bb2<-rep("",lena)
+for (i in 1:lena) bb[i]<-strsplit(aa[i],split="_")[[1]][1]
+for (i in 1:lena) bb2[i]<-paste(aa[i],"/",bb[i],"_processed.csv",sep="")
+file_primary<-bb
+file_list<-bb2
+lenf<-length(file_primary)
+data0<-read.csv(file_list[1])
+gene0<-data0[,1]
+gene0<-as.character(gene0)
+for (i in 2:lenf) {
+        data<-read.csv(file_list[i])
+        gene1<-data[,1]  
+        gene1<-as.character(gene1)
+        gene0<-union(gene1,gene0)
+        }
+lens<-length(gene0)
+num1<-lens
+num2<-lenf+1
+susu<-matrix(0,num1,num2)
+susu[,1]<-gene0
+target_name<-"p_T_NM"
+target_name2<-"fold_T_NM"
+fold_score_T<-rep(0,lens)
+for (i in 1:lenf) {
+        data<-read.csv(file_list[i])
+        gene<-data[,1]        
+	col_name<-which(colnames(data)==target_name)
+	compare<-data[,col_name]
+                col_name2<-which(colnames(data)==target_name2)
+                compare2<-data[,col_name2]
+        for (j in 1:lens) {
+             if (length(which(gene0[j]==gene))==0) next
+             k<-which(gene0[j]==gene)
+             susu[j,i+1]<-compare[k[1]]
+             if (compare2[k[1]]>3) fold_filter<-4
+             else if (compare2[k[1]]>2) fold_filter<-3
+             else if (compare2[k[1]]>1.5) fold_filter<-2
+             else if (compare2[k[1]]>1) fold_filter<-1
+             else if (compare2[k[1]]>0.8) fold_filter<-0
+             else if (compare2[k[1]]>0.5) fold_filter<-(-1)
+             else if (compare2[k[1]]>0.1) fold_filter<-(-2)
+             else fold_filter<-(-3) 
+             fold_score_T[j]<-fold_score_T[j]+fold_filter
+             }
+        }
+colnames(susu)[2:num2]<-paste(target_name,bb,sep="_")
+colnames(susu)[1]<-"Gene"
+susu<-as.data.frame(susu)
+susu$fold_score_T<-fold_score_T
+genes3<-susu[which(fold_score_T>=3),1]
+       #####
+f1<-fread(FILE000)
+f1<-as.data.frame(f1)
+f1<-f1[which(f1[,1] %in% genes3),]
+f2<-f1
+gene00<-f2[,1]
+susu3<-f2[which(!str_detect(gene00,"[0-9][0-9][0-9][0-9]")),]
+gene<-as.character(susu3[,1])
+susu3<-susu3[which(!str_detect(gene,"-")),]
+gene<-as.character(susu3[,1])
+susu3<-susu3[which(!str_detect(gene,"_")),]
+gene<-as.character(susu3[,1])
+susu3<-susu3[which(!str_detect(gene,"orf")),]
+gene<-as.character(susu3[,1])
+f3<-f2[which(gene00 %in% gene),]
+fwrite(f3,FILE000,row.names=FALSE)
+
+
+   ##Integrating all _processed.csv in all subfolders
+f <- list.files(pattern="processed.csv",full.names=TRUE,recursive = TRUE)
+    ##f<-f[which(!str_detect(f,"sc_data"))]   ###single cell sequencing files are listed in sc_data folder under dir folder
+f1 <- lapply(f,fread)
+nms <- gsub(".csv","",basename(f))
+f1 <- mapply(function(x,y) {nm <- names(x)
+                            idx <- !nm=="Gene"
+                            names(x)[idx] <- paste0(y,"_",nm[idx])
+                            x},x=f1,y=nms,SIMPLIFY=FALSE)
+
+f1 <- Reduce(function(...) merge.data.table(...,all=TRUE),f1)
+#f1 <- f1[grep("[0-9][0-9]-[A-Z][a-z][a-z]|^__",gene,invert=TRUE)]
+f1[is.na(f1)] <- 0
+fwrite(f1,"target_combine_LIHC.csv")
+
+
+
+##Prior knowledge generation
+##Readin marker genes and marker pathways from reported papers
+##Fill in this part manually based on understanding of the user-specified sphere
+marker_gene<-c("AR","CDK20","MET","HGF","ACE","GOLM1","DKK1","MDK","TP53","FUT8","GPC3","PBOV1","SYK","NFAP5","CAB39","P4HB","CHEK2","PIGR","ALDH2","GP1BA")
+marker_gene<-c(marker_gene,"ATCL6A","IFIT3","TBL1XR1","HPCAL1","PTPN11","SOX12","MTOR","PIK3CB","AKT1","VEGFA","SRC","TERT","IL6","TFGB1","MDM2")
+  ##power gene is squart highest impact factor for the paper reporting the gene
+power_gene<-c(16,10.376,14.911,14.911,16,16,16,16,14,31,8.67,12.353,14,17.016,14.097,14.097,17.016,17.016,17.016,14.097,14.097)
+power_gene<-c(power_gene,14.097,14.097,14.097,12,12,14.911,14.911,14.911,10.189,10.189,27.152,27.152,27.152,9.12)
+mg <- data.table(Gene=marker_gene,power=power_gene)
+  ##GO number can be achieved from QuickGO
+target_GO<-c("GO:0016055","GO:0033959","GO:0018928","GO:0007049","GO:0006979","GO:0051019","GO:0038127","GO:0007259")
+target_GO<-c(target_GO,"GO:0038085","GO:0000165","GO:0038061","GO:0038044","GO:0051972","GO:0061521","GO:0006338","GO:0035727","GO:0035329")
+library("org.Hs.eg.db")
+go <- as.data.table(org.Hs.egGO)
+geneinfo <- as.data.table(org.Hs.egSYMBOL)
+go <- merge(go,geneinfo,all.x=TRUE)
+gene_go <- go[go_id%in%target_GO,unique(symbol)]
+
+  ##Generate co-occurrence relationship 
+  #Option1: not using AI to genearte co-occurrence relationship
+topic <- "and liver cancer"
+library(data.table)
+x <- fread("target_combine_LIHC.csv")
+gene <- x[,gene]
+x[,gene:=NULL]
+y <- list()
+for(i in seq(gene))
+{
+   tmp <- getCount(gene[i])
+   if(tmp>0)
+   {
+      xi <- paste(gene[i],topic)
+      y[[i]] <- getCount(xi)
+   }
+   else
+   {
+      y[[i]] <- 0
+   } 
+   cat("iteration = ",i,"\n")
+}
+y <- unlist(y)
+res <- data.table(gene=gene,hits=y)
+fwrite(res,"Hepa_markers.csv")
+  ##Option 2: using AI to generate co-occurrence relationship
+# ============================================================================
+# R Script: Enhanced PubMed Co-occurrence Analysis with AI
+# Function: Calculate enhanced co-occurrence values between genes and liver cancer
+# Requirements: DeepSeek or OpenAI API key needed
+# ============================================================================
+# 1. Install necessary packages (if not already installed)
+# install.packages(c("easyPubMed", "httr", "jsonlite", "dplyr", "readr", "tm", "text2vec", "ggplot2"))
+# 2. Load packages
+library(easyPubMed)   # PubMed data retrieval
+library(httr)         # API calls
+library(jsonlite)     # JSON data processing
+library(dplyr)        # Data manipulation
+library(readr)        # File I/O
+library(tm)           # Text mining (optional)
+library(text2vec)     # Text vectorization (optional)
+library(ggplot2)      # Data visualization (optional)
+# 3. Configuration parameters
+# ----------------------------------------------------------------------------
+# API configuration (configure one based on your choice)
+USE_DEEPSEEK <- TRUE   # Set to TRUE for DeepSeek, FALSE for OpenAI GPT
+# API keys (replace with your own keys)
+DEEPSEEK_API_KEY <- "your_deepseek_api_key_here"
+OPENAI_API_KEY <- "your_openai_api_key_here"
+# API endpoints
+DEEPSEEK_API_URL <- "https://api.deepseek.com/v1/embeddings"
+OPENAI_API_URL <- "https://api.openai.com/v1/embeddings"
+# Model selection
+DEEPSEEK_MODEL <- "deepseek-embedding"  # DeepSeek embedding model
+OPENAI_MODEL <- "text-embedding-ada-002"  # OpenAI embedding model
+# Analysis parameters
+TARGET_TERM <- "liver cancer"  # Target term, change if necessary for other tasks
+ALPHA <- 0.7                   # Weight for traditional co-occurrence (0-1)
+MAX_ABSTRACTS_PER_GENE <- 500  # Maximum abstracts per gene
+MAX_GENES_TO_PROCESS <- 50     # Maximum genes to process (prevent excessive API calls)
+# File paths
+GENE_FILE <- "target_combine_LIHC.csv"  # Gene list file, change if necessary
+OUTPUT_FILE <- "enhanced_cooccurrence_results.csv"
+# 4. Helper functions
+# ----------------------------------------------------------------------------
+#' Read gene list
+#' @param file_path Path to CSV file
+#' @return Vector of gene names
+read_gene_list <- function(file_path) {
+  if (!file.exists(file_path)) {
+    stop(paste("File does not exist:", file_path))
+  }
+  
+  # Read CSV, assuming first column contains gene names
+  gene_data <- read_csv(file_path, col_names = FALSE)
+  genes <- gene_data[[1]]
+  
+  # Clean gene names: remove duplicates, empty values, and NAs
+  genes <- unique(genes)
+  genes <- genes[!is.na(genes) & genes != "" & nchar(genes) > 1]
+  
+  cat("Read", length(genes), "unique genes\n")
+  return(genes)
+}
+
+#' Fetch literature abstracts from PubMed
+#' @param query PubMed query string
+#' @param max_records Maximum number of records
+#' @return Vector of abstract texts
+fetch_pubmed_abstracts <- function(query, max_records = 500) {
+  cat("  Querying PubMed:", query, "\n")
+  
+  tryCatch({
+    # Get PubMed IDs
+    pubmed_ids <- get_pubmed_ids(query)
+    
+    if (pubmed_ids$Count == 0) {
+      cat("  No relevant literature found\n")
+      return(character(0))
+    }
+    
+    # Limit the number of records retrieved
+    retmax <- min(pubmed_ids$Count, max_records)
+    cat("  Found", retmax, "articles\n")
+    
+    # Get literature data
+    abstracts_xml <- fetch_pubmed_data(pubmed_ids, format = "xml", retmax = retmax)
+    
+    # Extract abstract text
+    abstracts_list <- custom_grep(abstracts_xml, "AbstractText", "char")
+    
+    # Clean abstract text
+    clean_abstracts <- sapply(abstracts_list, function(ab) {
+      if (is.na(ab) || nchar(ab) < 50) return("")
+      
+      # Remove HTML tags
+      ab <- gsub("<[^>]+>", "", ab)
+      # Remove special characters but keep basic punctuation
+      ab <- gsub("[^[:alnum:][:space:],.;:!?-]", " ", ab)
+      # Convert to lowercase
+      ab <- tolower(ab)
+      # Merge extra spaces
+      ab <- gsub("\\s+", " ", ab)
+      
+      return(trimws(ab))
+    })
+    
+    # Remove empty abstracts
+    clean_abstracts <- clean_abstracts[nchar(clean_abstracts) > 50]
+    
+    cat("  Valid abstracts:", length(clean_abstracts), "\n")
+    return(clean_abstracts)
+    
+  }, error = function(e) {
+    cat("  Error fetching abstracts:", e$message, "\n")
+    return(character(0))
+  })
+}
+
+#' Calculate traditional co-occurrence value
+#' @param abstracts Vector of abstract texts
+#' @param gene Gene name
+#' @param target_term Target term
+#' @return List containing co-occurrence count, frequency, and total documents
+calculate_cooccurrence <- function(abstracts, gene, target_term = "liver cancer") {
+  if (length(abstracts) == 0) {
+    return(list(count = 0, frequency = 0, total_docs = 0))
+  }
+  
+  # Convert to lowercase for case-insensitive matching
+  target_lower <- tolower(target_term)
+  gene_lower <- tolower(gene)
+  
+  # Synonyms/variants of target term
+  target_variants <- c(
+    target_lower,
+    "hepatocellular carcinoma",
+    "hcc",
+    "hepatic cancer",
+    "liver tumor",
+    "liver carcinoma"
+  )
+  
+  # Count co-occurrences
+  cooccur_count <- 0
+  
+  for (ab in abstracts) {
+    # Check if gene appears in abstract
+    gene_present <- grepl(gene_lower, ab, fixed = TRUE)
+    
+    # Check if any variant of target term appears in abstract
+    target_present <- any(sapply(target_variants, function(tv) {
+      grepl(tv, ab, fixed = TRUE)
+    }))
+    
+    if (gene_present && target_present) {
+      cooccur_count <- cooccur_count + 1
+    }
+  }
+  
+  # Calculate co-occurrence frequency
+  total_docs <- length(abstracts)
+  cooccur_freq <- ifelse(total_docs > 0, cooccur_count / total_docs, 0)
+  
+  return(list(
+    count = cooccur_count,
+    frequency = cooccur_freq,
+    total_docs = total_docs
+  ))
+}
+
+#' Call AI API to get text embeddings
+#' @param text Text to embed
+#' @return Embedding vector (numeric vector)
+get_text_embedding <- function(text) {
+  # Select API configuration
+  if (USE_DEEPSEEK) {
+    api_url <- DEEPSEEK_API_URL
+    api_key <- DEEPSEEK_API_KEY
+    model <- DEEPSEEK_MODEL
+    auth_header <- paste("Bearer", api_key)
+  } else {
+    api_url <- OPENAI_API_URL
+    api_key <- OPENAI_API_KEY
+    model <- OPENAI_MODEL
+    auth_header <- paste("Bearer", api_key)
+  }
+  
+  # Check API keys
+  if (api_key == "your_deepseek_api_key_here" || api_key == "your_openai_api_key_here") {
+    stop("Please configure your API keys first!")
+  }
+  
+  # Prepare request body
+  request_body <- list(
+    model = model,
+    input = text
+  )
+  
+  # Send API request
+  response <- tryCatch({
+    POST(
+      url = api_url,
+      add_headers(
+        "Authorization" = auth_header,
+        "Content-Type" = "application/json"
+      ),
+      body = toJSON(request_body, auto_unbox = TRUE),
+      encode = "json"
+    )
+  }, error = function(e) {
+    cat("  API call failed:", e$message, "\n")
+    return(NULL)
+  })
+  
+  # Check response
+  if (is.null(response) || status_code(response) != 200) {
+    cat("  API response error, status code:", ifelse(!is.null(response), status_code(response), "no response"), "\n")
+    return(NULL)
+  }
+  
+  # Parse response
+  response_content <- fromJSON(content(response, "text", encoding = "UTF-8"))
+  
+  # Extract embedding vector
+  if (!is.null(response_content$data) && length(response_content$data) > 0) {
+    embedding <- response_content$data$embedding[[1]]
+    return(embedding)
+  } else {
+    cat("  Could not extract embedding vector from API response\n")
+    return(NULL)
+  }
+}
+
+#' Calculate cosine similarity
+#' @param vec1 Vector 1
+#' @param vec2 Vector 2
+#' @return Cosine similarity (0-1)
+cosine_similarity <- function(vec1, vec2) {
+  if (is.null(vec1) || is.null(vec2)) {
+    return(0)
+  }
+  
+  # Ensure vectors have same length
+  if (length(vec1) != length(vec2)) {
+    cat("  Vectors have different lengths, cannot calculate similarity\n")
+    return(0)
+  }
+  
+  # Calculate cosine similarity
+  dot_product <- sum(vec1 * vec2)
+  norm1 <- sqrt(sum(vec1^2))
+  norm2 <- sqrt(sum(vec2^2))
+  
+  if (norm1 == 0 || norm2 == 0) {
+    return(0)
+  }
+  
+  similarity <- dot_product / (norm1 * norm2)
+  
+  # Scale similarity to 0-1 range (cosine similarity is originally between -1 and 1)
+  # Text embeddings typically produce positive values, so return directly
+  return(max(0, similarity))
+}
+
+#' Calculate semantic similarity
+#' @param gene Gene name
+#' @param target_term Target term
+#' @return Semantic similarity (0-1)
+calculate_semantic_similarity <- function(gene, target_term = "liver cancer") {
+  cat("  Calculating semantic similarity...\n")
+  
+  # Prepare query text
+  gene_query <- paste("gene", gene, "in human")
+  target_query <- paste(target_term, "in human")
+  
+  # Get embedding vectors
+  cat("    Getting gene embedding...\n")
+  gene_embedding <- get_text_embedding(gene_query)
+  
+  cat("    Getting target term embedding...\n")
+  target_embedding <- get_text_embedding(target_query)
+  
+  # Calculate similarity
+  if (is.null(gene_embedding) || is.null(target_embedding)) {
+    cat("  Could not get embedding vectors, returning similarity 0\n")
+    return(0)
+  }
+  
+  similarity <- cosine_similarity(gene_embedding, target_embedding)
+  cat("    Semantic similarity:", round(similarity, 4), "\n")
+  
+  return(similarity)
+}
+
+#' Calculate enhanced co-occurrence value
+#' @param cooccur_freq Traditional co-occurrence frequency
+#' @param semantic_sim Semantic similarity
+#' @param alpha Weight for traditional co-occurrence
+#' @return Enhanced co-occurrence value
+calculate_enhanced_value <- function(cooccur_freq, semantic_sim, alpha = 0.7) {
+  # Use weighted average to combine two metrics
+  enhanced_value <- alpha * cooccur_freq + (1 - alpha) * semantic_sim
+  return(enhanced_value)
+}
+
+# 5. Main analysis function
+# ----------------------------------------------------------------------------
+
+#' Analyze enhanced co-occurrence between genes and liver cancer
+#' @param gene_file Gene list file
+#' @param target_term Target term
+#' @param max_genes Maximum number of genes to process
+#' @return Dataframe containing results
+analyze_enhanced_cooccurrence <- function(gene_file, target_term = "liver cancer", max_genes = MAX_GENES_TO_PROCESS) {
+  
+  # Read gene list
+  cat("Step 1: Reading gene list\n")
+  all_genes <- read_gene_list(gene_file)
+  
+  # Limit number of genes to process (prevent excessive API calls)
+  if (length(all_genes) > max_genes) {
+    cat("Note: Number of genes exceeds limit, processing only first", max_genes, "genes\n")
+    genes_to_process <- head(all_genes, max_genes)
+  } else {
+    genes_to_process <- all_genes
+  }
+  
+  # Initialize results dataframe
+  results <- data.frame(
+    gene = character(),
+    cooccur_count = integer(),
+    cooccur_frequency = numeric(),
+    semantic_similarity = numeric(),
+    enhanced_value = numeric(),
+    total_docs = integer(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Process each gene
+  for (i in seq_along(genes_to_process)) {
+    gene <- genes_to_process[i]
+    cat("\n", strrep("=", 40), "\n", sep = "")
+    cat("Processing gene", i, "/", length(genes_to_process), ":", gene, "\n")
+    
+    # Step 2: Build PubMed query and fetch abstracts
+    query <- paste0(gene, " AND (liver cancer OR hepatocellular carcinoma OR HCC)")
+    abstracts <- fetch_pubmed_abstracts(query, max_records = MAX_ABSTRACTS_PER_GENE)
+    
+    if (length(abstracts) < 5) {
+      cat("  Insufficient abstracts, skipping this gene\n")
+      next
+    }
+    
+    # Step 3: Calculate traditional co-occurrence value
+    cooccur <- calculate_cooccurrence(abstracts, gene, target_term)
+    cat("  Traditional co-occurrence: ", cooccur$count, "/", cooccur$total_docs, 
+        " (", round(cooccur$frequency * 100, 2), "%)\n", sep = "")
+    
+    # Step 4: Calculate semantic similarity (using AI)
+    semantic_sim <- calculate_semantic_similarity(gene, target_term)
+    
+    # Step 5: Calculate enhanced co-occurrence value
+    enhanced_val <- calculate_enhanced_value(
+      cooccur$frequency, 
+      semantic_sim, 
+      alpha = ALPHA
+    )
+    cat("  Enhanced co-occurrence value: ", round(enhanced_val, 4), "\n", sep = "")
+    
+    # Store results
+    results <- rbind(results, data.frame(
+      gene = gene,
+      cooccur_count = cooccur$count,
+      cooccur_frequency = cooccur$frequency,
+      semantic_similarity = semantic_sim,
+      enhanced_value = enhanced_val,
+      total_docs = cooccur$total_docs,
+      stringsAsFactors = FALSE
+    ))
+    
+    # Add delay to avoid API rate limiting
+    if (i < length(genes_to_process)) {
+      cat("  Waiting 2 seconds...\n")
+      Sys.sleep(2)
+    }
+  }
+  
+  # Sort by enhanced co-occurrence value
+  if (nrow(results) > 0) {
+    results <- results[order(-results$enhanced_value), ]
+    rownames(results) <- NULL
+  }
+  
+  return(results)
+}
+
+# 6. Visualization function (optional)
+# ----------------------------------------------------------------------------
+
+#' Visualize results
+#' @param results Analysis results dataframe
+#' @param top_n Show top N genes
+visualize_results <- function(results, top_n = 20) {
+  if (nrow(results) == 0) {
+    cat("No results to visualize\n")
+    return(NULL)
+  }
+  
+  # Load visualization package
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    install.packages("ggplot2")
+  }
+  library(ggplot2)
+  
+  # Limit display number
+  display_data <- head(results, min(top_n, nrow(results)))
+  
+  # Create bar plot: enhanced co-occurrence values
+  p1 <- ggplot(display_data, aes(x = reorder(gene, enhanced_value), y = enhanced_value)) +
+    geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+    geom_text(aes(label = round(enhanced_value, 3)), 
+              hjust = -0.1, size = 3) +
+    coord_flip() +
+    labs(
+      title = paste("Top", nrow(display_data), "Genes by Enhanced Co-occurrence"),
+      subtitle = paste("Target:", TARGET_TERM, "| Alpha:", ALPHA),
+      x = "Gene",
+      y = "Enhanced Co-occurrence Value"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5)
+    )
+  
+  # Create scatter plot: traditional co-occurrence vs semantic similarity
+  p2 <- ggplot(results, aes(x = cooccur_frequency, y = semantic_similarity)) +
+    geom_point(aes(size = enhanced_value, color = enhanced_value), alpha = 0.6) +
+    scale_color_gradient(low = "blue", high = "red", name = "Enhanced Value") +
+    scale_size_continuous(range = c(2, 8), name = "Enhanced Value") +
+    labs(
+      title = "Traditional Co-occurrence vs Semantic Similarity",
+      x = "Co-occurrence Frequency",
+      y = "Semantic Similarity"
+    ) +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  # Display plots
+  print(p1)
+  print(p2)
+  
+  return(list(bar_plot = p1, scatter_plot = p2))
+}
+
+# 7. Main program
+# ----------------------------------------------------------------------------
+
+cat(strrep("=", 40), "\n", sep = "")
+cat("AI-enhanced PubMed Co-occurrence Analysis Started\n")
+cat("Using model:", ifelse(USE_DEEPSEEK, "DeepSeek", "OpenAI GPT"), "\n")
+cat("Target term:", TARGET_TERM, "\n")
+cat("Traditional co-occurrence weight (alpha):", ALPHA, "\n")
+cat(strrep("=", 40), "\n\n")
+
+# Execute analysis
+start_time <- Sys.time()
+results <- analyze_enhanced_cooccurrence(GENE_FILE, TARGET_TERM)
+end_time <- Sys.time()
+
+# Display analysis time
+analysis_duration <- round(as.numeric(difftime(end_time, start_time, units = "mins")), 2)
+cat("\n", strrep("=", 40), "\n", sep = "")
+cat("Analysis completed!\n")
+cat("Processing time:", analysis_duration, "minutes\n")
+cat("Successfully analyzed genes:", nrow(results), "\n")
+
+# Display top 10 results
+if (nrow(results) > 0) {
+  cat("\nTop 10 genes (sorted by enhanced co-occurrence value):\n")
+  print(head(results, 10))
+  
+  # Save results to CSV
+  write_csv(results, OUTPUT_FILE)
+  cat("\nResults saved to:", OUTPUT_FILE, "\n")
+  
+  # Optional: Generate visualizations
+  cat("\nGenerate visualizations? (y/n): ")
+  user_input <- readline()
+  
+  if (tolower(user_input) == "y") {
+    cat("Generating visualizations...\n")
+    plots <- visualize_results(results, top_n = 15)
+    
+    # Save plots
+    if (!is.null(plots)) {
+      ggsave("enhanced_cooccurrence_barplot.png", plots$bar_plot, 
+             width = 10, height = 8, dpi = 300)
+      ggsave("enhanced_cooccurrence_scatter.png", plots$scatter_plot,
+             width = 10, height = 8, dpi = 300)
+      cat("Plots saved as PNG files\n")
+    }
+  }
+} else {
+  cat("No valid results obtained\n")
+}
+
+cat("\nAnalysis finished!\n")
+
+# 8. Usage instructions
+# ----------------------------------------------------------------------------
+cat("\n", strrep("=", 50), "\n", sep = "")
+cat("USAGE INSTRUCTIONS:\n")
+cat("1. Save gene list as CSV file, ensure first column contains gene names\n")
+cat("2. Configure API keys (DeepSeek or OpenAI)\n")
+cat("3. Adjust parameters as needed (ALPHA, MAX_ABSTRACTS_PER_GENE, etc.)\n")
+cat("4. Run script: source('enhanced_cooccurrence_analysis.R')\n")
+cat("5. Results will be saved as CSV file, visualizations optional\n")
+cat(strrep("=", 50), "\n")
+
+
+
+##Survival information for tumors, not applied for non-tumors 
+##We provide 2 methods to generate survival information: download or calculate manually
+##Selective 1: Survival information download from GEPIA if don't want to calculate survival information manually
+gepia_survival <- function(gene,dir=getwd(),dataset="LIHC")
+{
+   require(RCurl)
+   require(rjson)
+   require(data.table)
+   require(pdftools)
+   url <- 'http://gepia2.cancer-pku.cn/assets/PHP4/GET_survival_zf.php?&axisunit=month&groupcutoff1=50&groupcutoff2=50&highcol=%23ff0000&ifconf=conf&ifhr=hr&is_sub=false&lowcol=%230000ff&methodoption=os&signature_norm=&subtype=&'
+   dat <- paste0("dataset=",dataset)
+   sig <- gene
+   pdf_file <- paste0(sig,".pdf")
+   dir <- file.path(dir,pdf_file)
+   sig <- paste0("&signature=",sig)
+   url <- paste0(url,dat,sig,collapse="&")
+   opt <- curlOptions(connecttimeout=200)
+   txt <- RCurl::getURL(url,.opts=opt)
+   jsn <- fromJSON(txt)
+   pdf <- jsn$outdir
+   pdf <- paste0("http://gepia2.cancer-pku.cn/tmp/",pdf)
+   #download.file(pdf,destfile=dir)
+   x <- pdf_text(pdf)
+   x <- strsplit(x," +")[[1]]
+   id <- grep("p=",x)
+   logrank <- gsub("p=","",x[id])
+   logrank <- as.numeric(gsub("\\\n","",logrank))
+   id <- grep("HR\\(high\\)",x)
+   hrhigh <- gsub("HR\\(high\\)=","",x[id])
+   hrhigh <- as.numeric(gsub("\\\n","",hrhigh))
+   id <- grep("p\\(HR\\)",x)
+   phr <- gsub("p\\(HR\\)=","",x[id])
+   phr <- as.numeric(gsub("\\\n","",phr))   
+   list(logrank=logrank,hrhigh=hrhigh,phr=phr)
+}
+hit<-fread("Hepa_markers.csv")
+geneh<-hit[,gene_primary]
+yy<-list()
+yy[length(geneh)]<-0
+for (i in 1:length(geneh)){
+      Sys.sleep(10)
+       fit0<-try(gepia_survival(geneh[i],dir="F:/ITRDR_v20/LIHC_survival"),silent=TRUE)
+       if (class(fit0)[1L]=="try-error") next
+      cat("iteration = ",i,"\n")
+      yy[[i]] <- fit0
+      }
+yyy<-matrix(0,length(geneh),4)
+colnames(yyy)<-c("Gene","survival_p","HR_high","pHR")
+yyy[,1]<-geneh
+for (i in 1:length(geneh)){
+    if (length(yy[[i]])==0) next
+    yyy[i,2]<-as.numeric(unlist(yy[[i]][1]))
+    yyy[i,3]<-as.numeric(unlist(yy[[i]][2]))
+    yyy[i,4]<-as.numeric(unlist(yy[[i]][3]))
+    }
+pyy<-as.numeric(yyy[,2])
+yyy2<-yyy[intersect(which(pyy>0),which(!is.na(pyy))),]
+write.csv(yyy2,"Survival_GEPIA_LIHC.csv",row.names=FALSE)
+hr2<-as.numeric(yyy2[,3])
+yyy3<-yyy2[which(hr2>1),]
+write.csv(yyy3,"Survival_GEPIA_LIHC_promotion.csv",row.names=FALSE)
+
+
+##Selective 2: Readin survival data if wanting to calculate survial information by ourselves
+library("stringr")
+sv_data<-read.csv("TCGA-LIHC_survival_processed.csv") 
+  ##This file combine expression data with clinic data to add survival information on the column name by "_" for each content
+colsv<-colnames(sv_data)
+lenc<-length(colsv)
+surv<-rep(0,lenc)
+stats<-rep(0,lenc)
+for (i in 2:lenc){
+   status<-strsplit(colsv[i],split="_")[[1]][3]
+   os1<-strsplit(colsv[i],split="_")[[1]][4]
+   os2<-strsplit(colsv[i],split="_")[[1]][5]
+   if (status=="Alive") { surv[i]<-os2; stats[i]<-0}
+   if (status=="Dead") {surv[i]<-os1; stats[i]<-1}
+   }
+data1<-sv_data
+lend<-dim(data1)[1]
+numd<-dim(data1)[2]
+gene1<-as.character(data1[,1])
+OS1<-surv[-1]
+OS2<-stats[-1]
+ my.surv <- survival::Surv(as.numeric(OS1)/30+0.0000001, OS2)
+#my.surv <- survival::Surv(as.numeric(OS1)+0.0000001, OS2)
+p_survival<-rep(0,lend)
+HR<-rep(0,lend)
+for (i in 1:lend){
+     temp<-as.numeric(data1[i,2:numd])
+     temp0<-median(temp)
+     if (temp0==0)  temp0<-mean(temp)
+     exp<-rep(0,numd-1)
+     for (j in 1:(numd-1)){
+          if (as.numeric(temp[j])>temp0) exp[j]<-1
+          if (as.numeric(temp[j])<temp0) exp[j]<-2
+         }
+     data00<-as.data.frame(cbind(exp,OS2,OS1))
+     cox1 <- survival::coxph(my.surv~as.numeric(data00$exp),data=data00)
+      HRR <- summary(cox1)$conf.int[,1] 
+     Pvalue<- coef(summary(cox1))[,5]
+       p_survival[i]<-Pvalue
+       HR[i]<-HRR
+     }
+p_survival1<-p_survival
+result_survival1<-cbind(gene1,HR,p_survival1)
+colnames(result_survival1)<-c("Gene","HR","p_survival")
+mp<-as.data.table(result_survival1)
+write.csv(result_survival1,"Survival_LIHC.csv",row.names=FALSE)
+
+
+
+##Integrating all data with prior knowledge
+library(data.table)
+mp<-fread("Survival_GEPIA_LIHC.csv")  ##Change filename if necessary
+x<-fread(FILE000)
+x<-as.data.frame(x)
+gene <- x[,1]
+#x[,Gene:=NULL]
+x<-x[,which(str_detect(colnames(x),"_p_"))]
+index <- rep("pval",ncol(x))
+index[grep("fc",names(x))] <- "fc"
+x<- - x
+x<-as.data.table(x)
+hit <- fread("Hepa_markers.csv")[,1:2]  ##The co-occurrence file, change filename if necessary
+colnames(hit)<-c("Gene","count")
+hit <- merge(hit,mg,all.x=TRUE,sort=FALSE)
+hit<-merge(hit,mp,all.x=TRUE,sort=FALSE)
+hit[is.na(hit)] <- 0
+hit[,go:=0]
+hit[Gene%in%gene_go,go:=1]
+
+
+#筛选基因
+niter <- 2000000 ##Change number if necessary
+filter_p <- -seq(0.00032,0.32,length=1000) ##Change the scope if necessary
+filter_fc <- seq(1.003,4,length=1000) ##Change the scope if necessary
+filter <- lapply(index,function(x) {
+   if(x=="pval") {
+      y <- sample(filter_p,niter,replace=TRUE)
+      }
+   else 
+      y <- sample(filter_fc,niter,replace=TRUE)
+      y})
+filter <- do.call("cbind",filter)
+
+for(i in seq(niter))
+{
+   l <- 0
+   for(j in seq(dim(filter)[2]))
+   {
+      jump <- sample(0:dim(filter)[2],1)
+      if(jump==0&l<=2)
+      {
+         filter[i,j] <- -1000
+         l <- l+1
+      }
+      else if(l>2)
+         break
+   }
+}
+
+idx <- list()
+for(i in seq(niter))
+{
+   fi1 <- filter[i,]      
+   y1=x[,mapply(function(x,y1) x>y1,x=.SD,y1=fi1)]
+   y= y1 
+  idx[[i]] <- which(rowSums(y)==dim(y)[2])
+   cat("i:", i,"\n")
+}
+names(idx) <- seq(niter)
+keep <- which(sapply(idx,length)>0)
+idx <- idx[keep]
+idx <- idx[!duplicated(lapply(idx,sort))]
+score <- sapply(idx,function(x) 
+   {y <-hit[x,]
+    y[,log(sum(count,na.rm=TRUE))/log(2)]+y[,sum(power,na.rm=TRUE)]+y[,sum(go,na.rm=TRUE)]})
+score2<-sapply(idx,function(x)
+    { y<-hit[x,]
+      y[,length(which(survival_p<0.05))/dim(y)[1]]})
+
+ ###add-powers
+score4<-score2*mean(score)/mean(score2)+score
+#score4<-score2
+score40<-sort(score4,decreasing=TRUE)
+nselect<-1000
+score_mix<-score40[1:nselect]
+id <- names(which(score4==score_mix[1]))
+ keep <- idx[[id]]
+ gene_keep<-gene[keep]
+ power_keep<-rep(score_mix[1],length(keep))
+for (i in 2:nselect){
+   id <- names(which(score4==score_mix[i]))
+   keep <- idx[[id]]
+   gene_keep<-c(gene_keep,gene[keep])
+   power_keep<-c(power_keep,rep(score_mix[i],length(keep)))
+   }
+ugene_keep<-unique(gene_keep)
+lenu<-length(ugene_keep)
+marku<-rep(0,lenu)
+for (i in 1:lenu) {
+   mark_m<-which(ugene_keep[i]==gene_keep)
+   marku[i]<-sum(as.numeric(power_keep[mark_m]))
+  }
+geneu2<-ugene_keep[which(marku==max(marku))]
+mp_gene<-as.character(mp[,Gene])
+mp2<-mp[which(mp_gene %in% geneu2),]
+mean(mp2[,survival_p],na.rm=TRUE)   ##for testing--0.1759433
+mp3<-mp2[which(as.numeric(mp2[,survival_p])<0.05),]
+gene3<-as.character(mp3[,Gene])
+mp4<-mp3[which(!str_detect(gene3,"[.]")),]
+gene4<-as.character(mp4[,Gene])
+mp5<-mp4[which(!str_detect(gene4,"-")),]
+FILEOUT200<-paste("LIHC2021_gene_v5_",strsplit(FILE000,split="_")[[1]][4],sep="")
+FILEOUT300<-paste("LIHC2021_gene_v6_",strsplit(FILE000,split="_")[[1]][4],sep="")
+write.csv(mp2,FILEOUT200,row.names=FALSE)  ##mp2 for unfiltered genes after CCMSB model performance
+write.csv(mp5,FILEOUT300,row.names=FALSE)  ##mp5 for genes after survival filtering after CCMSB model performance 
+
+
+##Another option -- if wanting to bypass score 1 and score 2 and using an integrated new score system
+score4<-score2*mean(score)/mean(score2)+score
+score40<-sort(score4,decreasing=TRUE)
+nselect<-200
+score_mix<-score40[1:nselect]
+id <- names(which(score4==score_mix[1]))
+ keep <- idx[[id]]
+ gene_keep<-gene[keep]
+for (i in 2:nselect){
+   id <- names(which(score4==score_mix[i]))
+   keep <- idx[[id]]
+   gene_keep<-c(gene_keep,gene[keep])
+   }
+ugene_keep<-unique(gene_keep)
+lenu<-length(ugene_keep)
+marku<-rep(0,lenu)
+for (i in 1:lenu) {
+   marku[i]<-length(which(ugene_keep[i]==gene_keep))
+  }
+ugene_keep2<-ugene_keep[which(marku==max(marku))]
+mp_gene<-as.character(mp[,Gene])
+mp2<-mp[which(mp_gene %in% ugene_keep2),]
+mean(mp2[,survival_p],na.rm=TRUE)   ##for testing--0.5196949
+mp3<-mp2[which(as.numeric(mp2[,survival_p])<0.05),]
+gene3<-as.character(mp3[,Gene])
+mp4<-mp3[which(!str_detect(gene3,"[.]")),]
+gene4<-as.character(mp4[,Gene])
+mp5<-mp4[which(!str_detect(gene4,"-")),]
+FILEOUT200<-paste("LIHC2021_gene_v5_",strsplit(FILE000,split="_")[[1]][4],sep="")
+FILEOUT300<-paste("LIHC2021_gene_v6_",strsplit(FILE000,split="_")[[1]][4],sep="")
+write.csv(mp2,FILEOUT200,row.names=FALSE)  ##mp2 for unfiltered genes after CCMSB model performance
+write.csv(mp5,FILEOUT300,row.names=FALSE)  ##mp5 for genes after survival filtering after CCMSB model performance 
+
+
+##Selective: if still wanting to perform further filtering on target Gene ontologies (the genes and reported gene ontologies) and TFs
+##further filtering
+mp50<-mp5
+target_GO2<-c(target_GO,"GO:0006355")
+library("org.Hs.eg.db")
+go <- as.data.table(org.Hs.egGO)
+geneinfo <- as.data.table(org.Hs.egSYMBOL)
+go <- merge(go,geneinfo,all.x=TRUE)
+gene_go <- go[go_id%in%target_GO2,unique(symbol)]
+gene50<-mp50[,Gene]
+mp51<-mp50[which(gene50 %in% gene_go),]
+write.csv(mp51,"LIHC_filter_targetGO.csv",row.names=FALSE)
+
+
